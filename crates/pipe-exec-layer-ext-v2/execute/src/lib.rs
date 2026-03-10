@@ -567,6 +567,7 @@ impl<Storage: GravityStorage> Core<Storage> {
         base_fee: u64,
         state: &Storage::StateView,
         mut validator_txns: Vec<TransactionSigned>,
+        available_gas_for_user_txs: u64,
     ) -> (RecoveredBlock<Block>, Vec<TxInfo>) {
         assert_eq!(ordered_block.transactions.len(), ordered_block.senders.len());
         let mut block = Block {
@@ -617,7 +618,7 @@ impl<Storage: GravityStorage> Core<Storage> {
             ordered_block.transactions,
             ordered_block.senders,
             base_fee,
-            block.gas_limit,
+            available_gas_for_user_txs,
         );
         self.metrics.filter_transaction_duration.record(start_time.elapsed());
         let (txs, senders) = if !validator_txns.is_empty() {
@@ -993,10 +994,21 @@ impl<Storage: GravityStorage> Core<Storage> {
                 } => (metadata_result, accumulated_state_changes, validator_results),
             };
 
+        let system_txn_gas_used = metadata_txn_result.result.gas_used().saturating_add(
+            validator_txn_results.iter().map(|result| result.result.gas_used()).sum::<u64>(),
+        );
+        let available_gas_for_user_txs =
+            get_gravity_config().pipe_block_gas_limit.saturating_sub(system_txn_gas_used);
+
         // No longer pass validator_txns to create_block_for_executor since they are executed
         // separately
-        let (block, txs_info) =
-            self.create_block_for_executor(ordered_block, base_fee, &state, vec![]);
+        let (block, txs_info) = self.create_block_for_executor(
+            ordered_block,
+            base_fee,
+            &state,
+            vec![],
+            available_gas_for_user_txs,
+        );
 
         info!(target: "execute_ordered_block",
             id=?block_id,
