@@ -13,9 +13,9 @@ use gravity_api_types::events::contract_event::GravityEvent;
 use gravity_primitives::get_gravity_config;
 use reth_chainspec::{ChainSpec, EthereumHardforks};
 use reth_ethereum_primitives::{Block, BlockBody, Transaction, TransactionSigned};
-use reth_evm::{Evm, IntoTxEnv};
+use reth_evm::Evm;
 use reth_execution_types::BlockExecutionOutput;
-use reth_primitives::{Receipt, Recovered};
+use reth_primitives::Receipt;
 use reth_provider::BlockExecutionResult;
 use revm::{
     context::TxEnv,
@@ -122,7 +122,7 @@ impl SystemTxnResult {
                 result: BlockExecutionResult {
                     receipts: vec![Receipt {
                         tx_type,
-                        success: true,
+                        success: self.result.is_success(),
                         cumulative_gas_used: gas_used,
                         logs: self.result.into_logs(),
                     }],
@@ -169,11 +169,13 @@ impl SystemTxnResult {
             receipt.cumulative_gas_used += gas_used;
         }
 
+        let is_success = self.result.is_success();
+
         result.execution_output.receipts.insert(
             insert_position,
             Receipt {
                 tx_type: self.txn.tx_type(),
-                success: true,
+                success: is_success,
                 cumulative_gas_used,
                 logs: self.result.into_logs(),
             },
@@ -197,12 +199,9 @@ pub fn transact_system_txn(
     let tx_env = Recovered::new_unchecked(txn.clone(), SYSTEM_CALLER).into_tx_env();
     let result = evm.transact_raw(tx_env).unwrap();
 
-    // DESIGN: System transaction failures are intentionally logged, not asserted.
-    // DKG and JWK system transactions can legitimately fail or revert, so a hard
-    // assert would crash the node on valid failure scenarios. Graceful handling
-    // (logging + continuing) is the correct behavior here.
     if !result.result.is_success() {
         super::errors::log_execution_error(&result.result);
+        panic!("Failed to execute system transaction: {:?}", result.result);
     }
 
     (SystemTxnResult { result: result.result, txn }, result.state)
