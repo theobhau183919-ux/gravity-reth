@@ -21,6 +21,9 @@ pub const EMPTY: [u8; 2] = [0x00, 0x00];
 /// `SlotIndex` record: ['i', '2']
 pub const SLOT_INDEX: [u8; 2] = [0x69, 0x32];
 
+/// Maximum entry payload size accepted from e2store files (64 MiB).
+pub const MAX_ENTRY_DATA_LENGTH: u32 = 64 * 1024 * 1024;
+
 /// Error types for e2s file operations
 #[derive(Error, Debug)]
 pub enum E2sError {
@@ -35,6 +38,10 @@ pub enum E2sError {
     /// Reserved field in header not zero
     #[error("Reserved field in header not zero")]
     ReservedNotZero,
+
+    /// Entry data length exceeds the supported maximum
+    #[error("Entry data length {0} exceeds maximum {MAX_ENTRY_DATA_LENGTH}")]
+    EntryTooLarge(u32),
 
     /// Error during snappy compression
     #[error("Snappy compression error: {0}")]
@@ -132,6 +139,10 @@ impl Entry {
             None => return Ok(None),
         };
 
+        if header.length > MAX_ENTRY_DATA_LENGTH {
+            return Err(E2sError::EntryTooLarge(header.length));
+        }
+
         // Read the data
         let mut data = vec![0u8; header.length as usize];
         match reader.read_exact(&mut data) {
@@ -163,6 +174,22 @@ impl Entry {
     /// Check if this is a `SlotIndex` entry
     pub fn is_slot_index(&self) -> bool {
         self.entry_type == SLOT_INDEX
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn rejects_oversized_entry_length() {
+        let mut bytes = Vec::new();
+        Header::new([0x11, 0x22], MAX_ENTRY_DATA_LENGTH + 1).write(&mut bytes).unwrap();
+
+        let mut cursor = Cursor::new(bytes);
+        let err = Entry::read(&mut cursor).unwrap_err();
+        assert!(matches!(err, E2sError::EntryTooLarge(len) if len == MAX_ENTRY_DATA_LENGTH + 1));
     }
 }
 
