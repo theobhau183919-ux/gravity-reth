@@ -78,8 +78,7 @@ pub struct DebugArgs {
     #[arg(
         long = "debug.invalid-block-hook",
         help_heading = "Debug",
-        value_parser = InvalidBlockSelectionValueParser::default(),
-        default_value = "witness"
+        value_parser = InvalidBlockSelectionValueParser::default()
     )]
     pub invalid_block_hook: Option<InvalidBlockSelection>,
 
@@ -116,7 +115,7 @@ impl Default for DebugArgs {
             reorg_frequency: None,
             reorg_depth: None,
             engine_api_store: None,
-            invalid_block_hook: Some(InvalidBlockSelection::default()),
+            invalid_block_hook: None,
             healthy_node_rpc_url: None,
             ethstats: None,
         }
