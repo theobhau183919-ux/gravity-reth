@@ -735,22 +735,12 @@ impl<Storage: GravityStorage> Core<Storage> {
 
         for (index, extra_data) in sorted_extra_data.iter().enumerate() {
             let is_dkg = matches!(extra_data, ExtraDataType::DKG(_));
-            // Try to construct validator transaction, skip if failed
-            let txn =
-                match construct_validator_txn_from_extra_data(extra_data, current_nonce, gas_price)
-                {
-                    Ok(txn) => txn,
-                    Err(e) => {
-                        error!(target: "execute_ordered_block",
-                            index=?index,
-                            is_dkg=?is_dkg,
-                            block_number=?block_number,
-                            error=?e,
-                            "Failed to construct validator transaction, skipping"
-                        );
-                        continue;
-                    }
-                };
+            let txn = construct_validator_txn_from_extra_data(extra_data, current_nonce, gas_price)
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "Failed to construct validator transaction at index {index} (is_dkg={is_dkg}, block_number={block_number}): {e}"
+                    )
+                });
             current_nonce += 1;
 
             debug!(target: "execute_ordered_block",
