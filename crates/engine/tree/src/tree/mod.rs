@@ -519,6 +519,60 @@ where
         let block_hash = block.recovered_block.hash();
         let sealed_header = block.recovered_block.clone_sealed_header();
 
+        self.validate_block(block.recovered_block()).unwrap_or_else(|err| {
+            panic!(
+                "Failed to validate block, block_number={block_number} block_hash={block_hash}: {err}",
+            )
+        });
+
+        let parent_hash = block.recovered_block().parent_hash();
+        let state_provider = self
+            .state_provider_builder(parent_hash)
+            .unwrap_or_else(|err| {
+                panic!(
+                    "Failed to create state provider for block, block_number={block_number} block_hash={block_hash}: {err}",
+                )
+            })
+            .unwrap_or_else(|| {
+                panic!(
+                    "Missing parent state for block, block_number={block_number} block_hash={block_hash} parent_hash={parent_hash}",
+                )
+            })
+            .build()
+            .unwrap_or_else(|err| {
+                panic!(
+                    "Failed to build state provider for block, block_number={block_number} block_hash={block_hash}: {err}",
+                )
+            });
+        let mut trie_input = self
+            .compute_trie_input(
+                self.persisting_kind_for(block.recovered_block.block_with_parent()),
+                self.provider.database_provider_ro().unwrap_or_else(|err| {
+                    panic!(
+                        "Failed to access database provider for block, block_number={block_number} block_hash={block_hash}: {err}",
+                    )
+                }),
+                parent_hash,
+                None,
+            )
+            .unwrap_or_else(|err| {
+                panic!(
+                    "Failed to compute trie input for block, block_number={block_number} block_hash={block_hash}: {err}",
+                )
+            });
+        trie_input.append_ref(block.hashed_state());
+        let (state_root, _) =
+            state_provider.state_root_from_nodes_with_updates(trie_input).unwrap_or_else(|err| {
+                panic!(
+                    "Failed to compute state root for block, block_number={block_number} block_hash={block_hash}: {err}",
+                )
+            });
+        assert_eq!(
+            state_root,
+            block.recovered_block().state_root(),
+            "State root mismatch for block_number={block_number} block_hash={block_hash}",
+        );
+
         self.state.tree_state.insert_executed(block);
 
         self.state.forkchoice_state_tracker.set_latest(
