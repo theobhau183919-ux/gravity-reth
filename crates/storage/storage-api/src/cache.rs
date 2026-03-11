@@ -203,6 +203,24 @@ impl PersistBlockCache {
                             (persist_height + last_contract_eviction_height) / 2
                         };
                         inner.contracts.retain(|_, v| v.block_number > eviction_height);
+
+                        // Keep the contract cache bounded even when all entries share the same
+                        // block height (for example, many read-populated entries within one
+                        // persist interval).
+                        let overflow =
+                            inner.contracts.len().saturating_sub(CACHE_CONTRACTS_THRESHOLD);
+                        if overflow > 0 {
+                            let mut victims = inner
+                                .contracts
+                                .iter()
+                                .map(|entry| (*entry.key(), entry.block_number))
+                                .collect::<Vec<_>>();
+                            victims.sort_unstable_by_key(|(_, block_number)| *block_number);
+                            for (code_hash, _) in victims.into_iter().take(overflow) {
+                                inner.contracts.remove(&code_hash);
+                            }
+                        }
+
                         last_contract_eviction_height = eviction_height;
                     }
                     // check and eviction account and trie state
