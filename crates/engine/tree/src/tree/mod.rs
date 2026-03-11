@@ -519,6 +519,12 @@ where
         let block_hash = block.recovered_block.hash();
         let sealed_header = block.recovered_block.clone_sealed_header();
 
+        self.validate_block(&block.recovered_block).unwrap_or_else(|err| {
+            panic!(
+                "Failed to validate block, block_number={block_number} block_hash={block_hash}: {err}",
+            )
+        });
+
         self.state.tree_state.insert_executed(block);
 
         self.state.forkchoice_state_tracker.set_latest(
