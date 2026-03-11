@@ -593,16 +593,17 @@ where
         limits: QueryLimits,
     ) -> Result<Vec<Log>, EthFilterError> {
         let mut all_logs = Vec::new();
-        let mut matching_headers = Vec::new();
+        let is_multi_block_range = from_block != to_block;
 
         // get current chain tip to determine processing mode
         let chain_tip = self.provider().best_block_number()?;
 
-        // first collect all headers that match the bloom filter for cached mode decision
+        // process matching headers in bounded chunks to avoid unbounded per-request buffering
         for (from, to) in
             BlockRangeInclusiveIter::new(from_block..=to_block, self.max_headers_range)
         {
             let headers = self.provider().headers_range(from..=to)?;
+            let mut matching_headers = Vec::new();
 
             let mut headers_iter = headers.into_iter().peekable();
 
@@ -626,55 +627,54 @@ where
 
                 matching_headers.push(SealedHeader::new(header, block_hash));
             }
-        }
 
-        // initialize the appropriate range mode based on collected headers
-        let mut range_mode = RangeMode::new(
-            self.clone(),
-            matching_headers,
-            from_block,
-            to_block,
-            self.max_headers_range,
-            chain_tip,
-        );
+            // initialize the appropriate range mode based on current chunk
+            let mut range_mode = RangeMode::new(
+                self.clone(),
+                matching_headers,
+                from,
+                to,
+                self.max_headers_range,
+                chain_tip,
+            );
 
-        // iterate through the range mode to get receipts and blocks
-        while let Some(ReceiptBlockResult { receipts, recovered_block, header }) =
-            range_mode.next().await?
-        {
-            let num_hash = header.num_hash();
-            append_matching_block_logs(
-                &mut all_logs,
-                recovered_block
-                    .map(ProviderOrBlock::Block)
-                    .unwrap_or_else(|| ProviderOrBlock::Provider(self.provider())),
-                filter,
-                num_hash,
-                &receipts,
-                false,
-                header.timestamp(),
-            )?;
-
-            // size check but only if range is multiple blocks, so we always return all
-            // logs of a single block
-            let is_multi_block_range = from_block != to_block;
-            if let Some(max_logs_per_response) = limits.max_logs_per_response &&
-                is_multi_block_range &&
-                all_logs.len() > max_logs_per_response
+            // iterate through the range mode to get receipts and blocks
+            while let Some(ReceiptBlockResult { receipts, recovered_block, header }) =
+                range_mode.next().await?
             {
-                debug!(
-                    target: "rpc::eth::filter",
-                    logs_found = all_logs.len(),
-                    max_logs_per_response,
-                    from_block,
-                    to_block = num_hash.number.saturating_sub(1),
-                    "Query exceeded max logs per response limit"
-                );
-                return Err(EthFilterError::QueryExceedsMaxResults {
-                    max_logs: max_logs_per_response,
-                    from_block,
-                    to_block: num_hash.number.saturating_sub(1),
-                });
+                let num_hash = header.num_hash();
+                append_matching_block_logs(
+                    &mut all_logs,
+                    recovered_block
+                        .map(ProviderOrBlock::Block)
+                        .unwrap_or_else(|| ProviderOrBlock::Provider(self.provider())),
+                    filter,
+                    num_hash,
+                    &receipts,
+                    false,
+                    header.timestamp(),
+                )?;
+
+                // size check but only if range is multiple blocks, so we always return all
+                // logs of a single block
+                if let Some(max_logs_per_response) = limits.max_logs_per_response &&
+                    is_multi_block_range &&
+                    all_logs.len() > max_logs_per_response
+                {
+                    debug!(
+                        target: "rpc::eth::filter",
+                        logs_found = all_logs.len(),
+                        max_logs_per_response,
+                        from_block,
+                        to_block = num_hash.number.saturating_sub(1),
+                        "Query exceeded max logs per response limit"
+                    );
+                    return Err(EthFilterError::QueryExceedsMaxResults {
+                        max_logs: max_logs_per_response,
+                        from_block,
+                        to_block: num_hash.number.saturating_sub(1),
+                    });
+                }
             }
         }
 
