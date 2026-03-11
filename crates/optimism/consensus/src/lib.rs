@@ -115,6 +115,14 @@ where
             validate_cancun_gas(block)?;
         }
 
+        if self.chain_spec.is_prague_active_at_timestamp(block.timestamp()) {
+            if block.requests_hash().is_none() {
+                return Err(ConsensusError::RequestsHashMissing)
+            }
+        } else if block.requests_hash().is_some() {
+            return Err(ConsensusError::RequestsHashUnexpected)
+        }
+
         // Check withdrawals root field in header
         if self.chain_spec.is_isthmus_active_at_timestamp(block.timestamp()) {
             // storage root of withdrawals pre-deploy is verified post-execution
