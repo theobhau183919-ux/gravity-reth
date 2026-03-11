@@ -942,15 +942,6 @@ where
                             let mut module = eth_api.clone().into_rpc();
                             module.merge(eth_filter.clone().into_rpc()).expect("No conflicts");
                             module.merge(eth_pubsub.clone().into_rpc()).expect("No conflicts");
-                            module
-                                .merge(
-                                    EthBundle::new(
-                                        eth_api.clone(),
-                                        self.blocking_pool_guard.clone(),
-                                    )
-                                    .into_rpc(),
-                                )
-                                .expect("No conflicts");
 
                             module.into()
                         }
@@ -990,7 +981,12 @@ where
                         // TODO: can we get rid of this here?
                         // Custom modules are not handled here - they should be registered via
                         // extend_rpc_modules
-                        RethRpcModule::Flashbots | RethRpcModule::Other(_) => Default::default(),
+                        RethRpcModule::Flashbots => {
+                            EthBundle::new(eth_api.clone(), self.blocking_pool_guard.clone())
+                                .into_rpc()
+                                .into()
+                        }
+                        RethRpcModule::Other(_) => Default::default(),
                         RethRpcModule::Miner => MinerApi::default().into_rpc().into(),
                         RethRpcModule::Mev => {
                             EthSimBundle::new(eth_api.clone(), self.blocking_pool_guard.clone())
