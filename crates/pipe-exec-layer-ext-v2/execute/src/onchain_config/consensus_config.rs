@@ -48,10 +48,11 @@ where
             })
             .ok()?;
 
-        Some(
-            getCurrentConfigCall::abi_decode_returns(&result)
-                .expect("Failed to decode getCurrentConfig return value"),
-        )
+        getCurrentConfigCall::abi_decode_returns(&result)
+            .map_err(|e| {
+                tracing::warn!("Failed to decode consensus config at block {}: {:?}", block_id, e);
+            })
+            .ok()
     }
 
     fn contract_address() -> Address {

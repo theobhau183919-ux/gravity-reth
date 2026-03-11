@@ -195,7 +195,19 @@ pub fn transact_system_txn(
     use reth_primitives::Recovered;
 
     let tx_env = Recovered::new_unchecked(txn.clone(), SYSTEM_CALLER).into_tx_env();
-    let result = evm.transact_raw(tx_env).unwrap();
+    let result = match evm.transact_raw(tx_env) {
+        Ok(result) => result,
+        Err(err) => {
+            tracing::error!("Failed to execute system transaction: {:?}", err);
+            return (
+                SystemTxnResult {
+                    result: ExecutionResult::Revert { gas_used: 0, output: Bytes::new() },
+                    txn,
+                },
+                EvmState::default(),
+            );
+        }
+    };
 
     // DESIGN: System transaction failures are intentionally logged, not asserted.
     // DKG and JWK system transactions can legitimately fail or revert, so a hard

@@ -52,7 +52,14 @@ where
                 })
                 .ok()?;
             getActiveValidatorsCall::abi_decode_returns(&result)
-                .expect("Failed to decode getActiveValidators return value")
+                .map_err(|e| {
+                    tracing::warn!(
+                        "Failed to decode active validators at block {}: {:?}",
+                        block_id,
+                        e
+                    );
+                })
+                .ok()?
         };
 
         // 2. Fetch pending active validators
@@ -71,7 +78,14 @@ where
                 })
                 .ok()?;
             getPendingActiveValidatorsCall::abi_decode_returns(&result)
-                .expect("Failed to decode getPendingActiveValidators return value")
+                .map_err(|e| {
+                    tracing::warn!(
+                        "Failed to decode pending active validators at block {}: {:?}",
+                        block_id,
+                        e
+                    );
+                })
+                .ok()?
         };
 
         // 3. Fetch pending inactive validators
@@ -90,7 +104,14 @@ where
                 })
                 .ok()?;
             getPendingInactiveValidatorsCall::abi_decode_returns(&result)
-                .expect("Failed to decode getPendingInactiveValidators return value")
+                .map_err(|e| {
+                    tracing::warn!(
+                        "Failed to decode pending inactive validators at block {}: {:?}",
+                        block_id,
+                        e
+                    );
+                })
+                .ok()?
         };
 
         // Convert to BCS-encoded ValidatorSet format with all validator lists

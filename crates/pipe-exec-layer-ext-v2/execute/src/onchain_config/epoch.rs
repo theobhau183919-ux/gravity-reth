@@ -62,7 +62,10 @@ where
                 .ok()?;
 
             let epoch = Reconfiguration::currentEpochCall::abi_decode_returns(&result)
-                .expect("Failed to decode currentEpoch return value");
+                .map_err(|e| {
+                    tracing::warn!("Failed to decode epoch info at block {}: {:?}", block_id, e);
+                })
+                .ok()?;
 
             // Convert epoch to bytes
             Some(Bytes::from(epoch.to_le_bytes().to_vec()))
