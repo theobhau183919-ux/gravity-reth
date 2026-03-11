@@ -74,12 +74,13 @@ where
             return;
         }
 
-        // Only keep the last BLOCK_HASH_HISTORY block hashes before the canonical block number,
-        // including the canonical block number.
+        // Keep hashes in the EVM-accessible range [block_number - BLOCK_HASH_HISTORY, block_number]
+        // (inclusive). Because the current canonical block hash is cached as well, this window
+        // contains BLOCK_HASH_HISTORY + 1 entries.
         let target_block_number = block_number - BLOCK_HASH_HISTORY;
         let mut block_number_to_id = self.block_number_to_id.lock().unwrap();
         while let Some((&first_key, _)) = block_number_to_id.first_key_value() {
-            if first_key <= target_block_number {
+            if first_key < target_block_number {
                 block_number_to_id.pop_first();
             } else {
                 break;
@@ -108,7 +109,7 @@ impl<Tx: DbTx> DatabaseRef for RawBlockViewProvider<Tx> {
     fn basic_ref(&self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
         if let Some(cache) = &self.cache {
             if let Some(value) = cache.basic_account(&address) {
-                return Ok(value.map(Into::into))
+                return Ok(value.map(Into::into));
             }
         }
         Ok(self.tx.get_by_encoded_key::<tables::PlainAccountState>(&address)?.map(Into::into))
@@ -175,7 +176,7 @@ impl DatabaseRef for BlockViewProvider {
     fn basic_ref(&self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
         if let Some(cache) = &self.cache {
             if let Some(value) = cache.basic_account(&address) {
-                return Ok(value.map(Into::into))
+                return Ok(value.map(Into::into));
             }
         }
         self.db.basic_ref(address)
@@ -209,5 +210,32 @@ impl DatabaseRef for BlockViewProvider {
 
     fn block_hash_ref(&self, _number: u64) -> Result<B256, Self::Error> {
         unimplemented!("not support block_hash_ref in BlockViewProvider")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn update_canonical_keeps_oldest_valid_blockhash() {
+        let mut cache = BTreeMap::new();
+        for number in 1..=(BLOCK_HASH_HISTORY + 1) {
+            cache.insert(number, B256::from(U256::from(number)));
+        }
+
+        let block_number = BLOCK_HASH_HISTORY + 1;
+        let target_block_number = block_number - BLOCK_HASH_HISTORY;
+
+        while let Some((&first_key, _)) = cache.first_key_value() {
+            if first_key < target_block_number {
+                cache.pop_first();
+            } else {
+                break;
+            }
+        }
+
+        assert!(cache.contains_key(&target_block_number));
     }
 }
