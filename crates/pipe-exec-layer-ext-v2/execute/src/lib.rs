@@ -568,7 +568,23 @@ impl<Storage: GravityStorage> Core<Storage> {
         state: &Storage::StateView,
         mut validator_txns: Vec<TransactionSigned>,
     ) -> (RecoveredBlock<Block>, Vec<TxInfo>) {
-        assert_eq!(ordered_block.transactions.len(), ordered_block.senders.len());
+        let recovered_senders = ordered_block
+            .transactions
+            .iter()
+            .map(TransactionSigned::recover_signer)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap_or_else(|err| panic!("failed to recover transaction sender: {err:?}"));
+
+        if ordered_block.senders != recovered_senders {
+            warn!(
+                target: "create_block_for_executor",
+                provided_sender_len = ordered_block.senders.len(),
+                recovered_sender_len = recovered_senders.len(),
+                block_number = ordered_block.number,
+                "coordinator provided sender list mismatch, using recovered senders"
+            );
+        }
+
         let mut block = Block {
             header: Header {
                 beneficiary: ordered_block.coinbase,
@@ -615,7 +631,7 @@ impl<Storage: GravityStorage> Core<Storage> {
         let (txs, senders, txs_info) = self.filter_invalid_txs(
             state,
             ordered_block.transactions,
-            ordered_block.senders,
+            recovered_senders,
             base_fee,
             block.gas_limit,
         );
