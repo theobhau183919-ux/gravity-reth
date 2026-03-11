@@ -132,7 +132,10 @@ where
 
         // Decode the Solidity DKG state
         let solidity_dkg_state = getDKGStateCall::abi_decode_returns(&result)
-            .expect("Failed to decode getDKGState return value");
+            .map_err(|e| {
+                tracing::warn!("Failed to decode DKG state at block {}: {:?}", block_id, e);
+            })
+            .ok()?;
         Some(convert_dkg_state_to_bcs(&solidity_dkg_state))
     }
 
@@ -184,7 +187,10 @@ where
 
         // Decode the Solidity RandomnessConfig
         let solidity_config = getCurrentConfigCall::abi_decode_returns(&result)
-            .expect("Failed to decode getCurrentConfig return value");
+            .map_err(|e| {
+                tracing::warn!("Failed to decode RandomnessConfig at block {}: {:?}", block_id, e);
+            })
+            .ok()?;
         Some(convert_randomness_config_to_bcs(&solidity_config))
     }
 
