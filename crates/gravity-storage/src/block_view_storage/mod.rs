@@ -108,7 +108,7 @@ impl<Tx: DbTx> DatabaseRef for RawBlockViewProvider<Tx> {
     fn basic_ref(&self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
         if let Some(cache) = &self.cache {
             if let Some(value) = cache.basic_account(&address) {
-                return Ok(value.map(Into::into))
+                return Ok(value.map(Into::into));
             }
         }
         Ok(self.tx.get_by_encoded_key::<tables::PlainAccountState>(&address)?.map(Into::into))
@@ -147,8 +147,8 @@ impl<Tx: DbTx> DatabaseRef for RawBlockViewProvider<Tx> {
             .unwrap_or_default())
     }
 
-    fn block_hash_ref(&self, _number: u64) -> Result<B256, Self::Error> {
-        unimplemented!("not support block_hash_ref in BlockViewProvider")
+    fn block_hash_ref(&self, number: u64) -> Result<B256, Self::Error> {
+        Ok(self.tx.get::<tables::CanonicalHeaders>(number)?.unwrap_or_default())
     }
 }
 
@@ -175,7 +175,7 @@ impl DatabaseRef for BlockViewProvider {
     fn basic_ref(&self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
         if let Some(cache) = &self.cache {
             if let Some(value) = cache.basic_account(&address) {
-                return Ok(value.map(Into::into))
+                return Ok(value.map(Into::into));
             }
         }
         self.db.basic_ref(address)
@@ -207,7 +207,7 @@ impl DatabaseRef for BlockViewProvider {
         self.db.storage_ref(address, index)
     }
 
-    fn block_hash_ref(&self, _number: u64) -> Result<B256, Self::Error> {
-        unimplemented!("not support block_hash_ref in BlockViewProvider")
+    fn block_hash_ref(&self, number: u64) -> Result<B256, Self::Error> {
+        self.db.block_hash_ref(number)
     }
 }
